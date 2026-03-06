@@ -23,7 +23,7 @@ from google.genai import types
 # =====================
 
 TELEGRAM_TOKEN = "8612915134:AAHN8V2l0YhQrScRo_bZ6rHOCabqS8LyjoQ"
-GEMINI_API = "AIzaSyBJWUW_XB8r40kQV93U9FvfIsT5E-jG-cA"
+GEMINI_API = "AIzaSyB8geT4qYdS7oTm5ZfF1wEVOT32pBFsS-Q"
 ADMIN_ID = 215444830
 
 TEXT_MODEL = "gemini-2.0-flash"
