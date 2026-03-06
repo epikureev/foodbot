@@ -1,0 +1,6 @@
+aiogram
+google-genai
+pandas
+pillow
+schedule
+openpyxl
