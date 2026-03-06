@@ -596,10 +596,16 @@ def scheduler():
 
     schedule.every().day.at("08:00").do(lambda: asyncio.run(report()))
 
-    while True:
+    try:
 
-        schedule.run_pending()
-        time.sleep(30)
+        while True:
+
+            schedule.run_pending()
+            time.sleep(30)
+
+    except KeyboardInterrupt:
+
+        print("Scheduler stopped")
 
 
 # =====================
@@ -611,19 +617,9 @@ async def main():
 
     print("BOT STARTED")
 
-    try:
+    asyncio.create_task(asyncio.to_thread(scheduler))
 
-        asyncio.create_task(asyncio.to_thread(scheduler))
-
-        await dp.start_polling(bot)
-
-    except Exception as e:
-
-        print("CRITICAL ERROR:", e)
-
-        import sys
-
-        sys.exit(1)
+    await dp.start_polling(bot)
 
 
 if __name__ == "__main__":
