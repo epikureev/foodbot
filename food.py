@@ -4,6 +4,7 @@ import json
 import sqlite3
 import time
 import io
+import os
 
 import pandas as pd
 import schedule
@@ -17,14 +18,18 @@ from google import genai
 from google.genai import types
 
 
+# =====================
+# CONFIG
+# =====================
+
 TELEGRAM_TOKEN = "8612915134:AAHN8V2l0YhQrScRo_bZ6rHOCabqS8LyjoQ"
-GEMINI_API = "AIzaSyBw63A19MywWyhzMSVwHrxLQPNtigBTd_E"
+GEMINI_API = "AIzaSyBJWUW_XB8r40kQV93U9FvfIsT5E-jG-cA"
 ADMIN_ID = 215444830
 
-TEXT_MODEL = "gemini-3.1-flash-lite-preview"
+TEXT_MODEL = "gemini-2.0-flash"
 IMAGE_MODEL = "gemini-2.5-flash"
 
-DAILY_LIMIT = 2450
+DAILY_LIMIT = 2200
 
 
 # =====================
@@ -46,11 +51,11 @@ client = genai.Client(api_key=GEMINI_API)
 # DATABASE
 # =====================
 
-conn = sqlite3.connect("food.db")
+conn = sqlite3.connect("food.db", check_same_thread=False)
 cursor = conn.cursor()
 
 cursor.execute(
-"""
+    """
 CREATE TABLE IF NOT EXISTS food(
 id INTEGER PRIMARY KEY AUTOINCREMENT,
 user_id INTEGER,
@@ -69,15 +74,20 @@ conn.commit()
 
 
 # =====================
-# JSON PARSER
+# ERROR
 # =====================
+
 
 def fatal_error(e):
 
     print("FATAL ERROR:", e)
 
-    import os
     os._exit(1)
+
+
+# =====================
+# JSON PARSER
+# =====================
 
 
 def parse_json(text):
@@ -93,7 +103,16 @@ def parse_json(text):
         if start == -1 or end == -1:
             return None
 
-        return json.loads(text[start:end])
+        data = json.loads(text[start:end])
+
+        return {
+            "food": data.get("food", "unknown"),
+            "grams": float(data.get("grams", 0)),
+            "kcal": float(data.get("kcal", 0)),
+            "protein": float(data.get("protein", 0)),
+            "fat": float(data.get("fat", 0)),
+            "carbs": float(data.get("carbs", 0)),
+        }
 
     except:
         return None
@@ -103,10 +122,13 @@ def parse_json(text):
 # GEMINI TEXT
 # =====================
 
+
 def gemini_parse(text):
 
     prompt = """
-Return JSON:
+You are a nutrition calculator.
+
+Return ONLY JSON.
 
 {
 "food":"name",
@@ -118,41 +140,57 @@ Return JSON:
 }
 """
 
-    models = [
-        "gemini-3.1-flash-lite-preview",
-        "gemini-2.5-flash"
-    ]
+    models = ["gemini-2.5-flash", "gemini-2.5-flash-lite"]
 
     for model in models:
 
-        try:
+        for attempt in range(3):
 
-            response = client.models.generate_content(
-                model=model,
-                contents=[prompt, text]
-            )
+            try:
 
-            print("MODEL USED:", model)
+                response = client.models.generate_content(
+                    model=model, contents=f"{prompt}\nFood: {text}"
+                )
 
-            return response.text
+                if response.text:
 
-        except Exception as e:
+                    print("MODEL USED:", model)
 
-            print("MODEL FAILED:", model, e)
+                    return response.text
 
-    fatal_error("All Gemini models failed")
+            except Exception as e:
+
+                print("MODEL FAILED:", model, e)
+
+                time.sleep(2)
+
+    fatal_error("Gemini unavailable")
 
 
 # =====================
 # GEMINI IMAGE
 # =====================
 
+
 def gemini_parse_image(img):
 
     prompt = """
-Identify food in image.
+You are a nutrition expert.
 
-Return JSON:
+1. Identify the food.
+2. Estimate portion size in grams.
+
+Use common portion sizes.
+
+Examples:
+
+plate of rice → 200-250 g
+steak → 180-250 g
+banana → 120 g
+apple → 180 g
+egg → 60 g
+
+Return ONLY JSON:
 
 {
 "food":"name",
@@ -169,18 +207,29 @@ Return JSON:
         buffer = io.BytesIO()
         img.save(buffer, format="JPEG")
 
-        response = client.models.generate_content(
-            model=IMAGE_MODEL,
-            contents=[
-                prompt,
-                types.Part.from_bytes(
-                    data=buffer.getvalue(),
-                    mime_type="image/jpeg"
-                )
-            ]
-        )
+        for attempt in range(3):
 
-        return response.text
+            try:
+
+                response = client.models.generate_content(
+                    model=IMAGE_MODEL,
+                    contents=[
+                        prompt,
+                        types.Part.from_bytes(
+                            data=buffer.getvalue(), mime_type="image/jpeg"
+                        ),
+                    ],
+                )
+
+                if response.text:
+                    return response.text
+
+            except Exception as e:
+
+                print("IMAGE MODEL FAILED:", e)
+                time.sleep(2)
+
+        return None
 
     except Exception as e:
 
@@ -191,10 +240,11 @@ Return JSON:
 # SAVE FOOD
 # =====================
 
+
 def save_food(user, food, grams, kcal, protein, fat, carbs):
 
     cursor.execute(
-"""
+        """
 INSERT INTO food(user_id,date,food,grams,kcal,protein,fat,carbs)
 VALUES(?,?,?,?,?,?,?,?)
 """,
@@ -217,6 +267,7 @@ VALUES(?,?,?,?,?,?,?,?)
 # DAILY TOTAL
 # =====================
 
+
 def daily_total(date):
 
     df = pd.read_sql_query(
@@ -232,6 +283,7 @@ def daily_total(date):
 # =====================
 # WEEK STATS
 # =====================
+
 
 def week_stats():
 
@@ -251,6 +303,7 @@ def week_stats():
 # EXCEL
 # =====================
 
+
 def export_excel():
 
     df = pd.read_sql_query("SELECT * FROM food", conn)
@@ -260,10 +313,7 @@ def export_excel():
     file = "food_report.xlsx"
 
     with pd.ExcelWriter(
-        file,
-        engine="openpyxl",
-        mode="a",
-        if_sheet_exists="replace"
+        file, engine="openpyxl", mode="a", if_sheet_exists="replace"
     ) as writer:
 
         df.to_excel(writer, sheet_name=month, index=False)
@@ -275,11 +325,12 @@ def export_excel():
 # COMMANDS
 # =====================
 
+
 @dp.message(Command("start"))
 async def start(message: Message):
 
     await message.answer(
-"""
+        """
 Отправьте:
 
 текст еды
@@ -299,11 +350,12 @@ async def start(message: Message):
 # DELETE LAST
 # =====================
 
+
 @dp.message(Command("undo"))
 async def undo(message: Message):
 
     cursor.execute(
-"""
+        """
 DELETE FROM food
 WHERE id=(
 SELECT id FROM food
@@ -323,6 +375,7 @@ LIMIT 1)
 # TODAY STATS
 # =====================
 
+
 @dp.message(Command("stats"))
 async def stats(message: Message):
 
@@ -333,11 +386,10 @@ async def stats(message: Message):
     if total is None:
 
         await message.answer("Сегодня записей нет")
-
         return
 
     await message.answer(
-f"""
+        f"""
 Сегодня:
 
 Калории {total.kcal:.0f}
@@ -354,6 +406,7 @@ f"""
 # WEEK
 # =====================
 
+
 @dp.message(Command("week"))
 async def week(message: Message):
 
@@ -362,11 +415,10 @@ async def week(message: Message):
     if avg is None:
 
         await message.answer("Нет данных")
-
         return
 
     await message.answer(
-f"""
+        f"""
 Среднее за неделю
 
 Калории {avg.kcal:.0f}
@@ -381,6 +433,7 @@ f"""
 # EXCEL
 # =====================
 
+
 @dp.message(Command("excel"))
 async def excel(message: Message):
 
@@ -392,6 +445,7 @@ async def excel(message: Message):
 # =====================
 # PHOTO
 # =====================
+
 
 @dp.message(F.photo)
 async def photo(message: Message):
@@ -413,7 +467,6 @@ async def photo(message: Message):
     if not data:
 
         await message.answer("Не смог распознать")
-
         return
 
     save_food(
@@ -426,11 +479,29 @@ async def photo(message: Message):
         data["carbs"],
     )
 
-    await message.answer(
-f"""
-{data['food']}
+    today = datetime.date.today().isoformat()
 
-{data['kcal']} kcal
+    total = daily_total(today)
+
+    if total is None:
+        eaten = data["kcal"]
+    else:
+        eaten = total.kcal
+
+    left = DAILY_LIMIT - eaten
+
+    await message.answer(
+        f"""
+🍽 {data['food']}
+
+⚖️ Вес: {data['grams']:.0f} г
+🔥 Калории: {data['kcal']:.0f} ккал
+
+🥩 Белки: {data['protein']:.1f} г
+🧈 Жиры: {data['fat']:.1f} г
+🍞 Углеводы: {data['carbs']:.1f} г
+
+📊 Осталось на сегодня: {left:.0f} ккал
 """
     )
 
@@ -438,6 +509,7 @@ f"""
 # =====================
 # TEXT
 # =====================
+
 
 @dp.message(F.text)
 async def text(message: Message):
@@ -449,7 +521,6 @@ async def text(message: Message):
     if not data:
 
         await message.answer("Ошибка распознавания")
-
         return
 
     save_food(
@@ -462,11 +533,29 @@ async def text(message: Message):
         data["carbs"],
     )
 
-    await message.answer(
-f"""
-{data['food']}
+    today = datetime.date.today().isoformat()
 
-{data['kcal']} kcal
+    total = daily_total(today)
+
+    if total is None:
+        eaten = data["kcal"]
+    else:
+        eaten = total.kcal
+
+    left = DAILY_LIMIT - eaten
+
+    await message.answer(
+        f"""
+🍽 {data['food']}
+
+⚖️ Вес: {data['grams']:.0f} г
+🔥 Калории: {data['kcal']:.0f} ккал
+
+🥩 Белки: {data['protein']:.1f} г
+🧈 Жиры: {data['fat']:.1f} г
+🍞 Углеводы: {data['carbs']:.1f} г
+
+📊 Осталось на сегодня: {left:.0f} ккал
 """
     )
 
@@ -474,6 +563,7 @@ f"""
 # =====================
 # REPORT
 # =====================
+
 
 async def report():
 
@@ -486,44 +576,54 @@ async def report():
 
     await bot.send_message(
         ADMIN_ID,
-f"""
+        f"""
 Итого за {yesterday}
 
 Калории {total.kcal:.0f}
 Белки {total.protein:.1f}
 Жиры {total.fat:.1f}
 Углеводы {total.carbs:.1f}
-"""
+""",
     )
+
+
+# =====================
+# SCHEDULER
+# =====================
 
 
 def scheduler():
 
-    try:
+    schedule.every().day.at("08:00").do(lambda: asyncio.run(report()))
 
-        schedule.every().day.at("08:00").do(lambda: asyncio.run(report()))
+    while True:
 
-        while True:
-
-            schedule.run_pending()
-            time.sleep(30)
-
-    except KeyboardInterrupt:
-
-        print("Scheduler stopped")
+        schedule.run_pending()
+        time.sleep(30)
 
 
 # =====================
 # MAIN
 # =====================
 
+
 async def main():
 
     print("BOT STARTED")
 
-    asyncio.create_task(asyncio.to_thread(scheduler))
+    try:
 
-    await dp.start_polling(bot)
+        asyncio.create_task(asyncio.to_thread(scheduler))
+
+        await dp.start_polling(bot)
+
+    except Exception as e:
+
+        print("CRITICAL ERROR:", e)
+
+        import sys
+
+        sys.exit(1)
 
 
 if __name__ == "__main__":
