@@ -3,6 +3,7 @@ import datetime
 import json
 import sqlite3
 import time
+import io
 
 import pandas as pd
 import schedule
@@ -13,15 +14,12 @@ from aiogram.filters import Command
 from aiogram.types import Message
 
 from google import genai
+from google.genai import types
 
-
-# =========================
-# CONFIG
-# =========================
 
 TELEGRAM_TOKEN = "8612915134:AAHN8V2l0YhQrScRo_bZ6rHOCabqS8LyjoQ"
 GEMINI_API = "AIzaSyBw63A19MywWyhzMSVwHrxLQPNtigBTd_E"
-YOUR_TELEGRAM_ID = 215444830
+ADMIN_ID = 215444830
 
 TEXT_MODEL = "gemini-3.1-flash-lite-preview"
 IMAGE_MODEL = "gemini-2.5-flash"
@@ -29,30 +27,30 @@ IMAGE_MODEL = "gemini-2.5-flash"
 DAILY_LIMIT = 2450
 
 
-# =========================
+# =====================
 # TELEGRAM
-# =========================
+# =====================
 
 bot = Bot(token=TELEGRAM_TOKEN)
 dp = Dispatcher()
 
 
-# =========================
+# =====================
 # GEMINI
-# =========================
+# =====================
 
 client = genai.Client(api_key=GEMINI_API)
 
 
-# =========================
+# =====================
 # DATABASE
-# =========================
+# =====================
 
 conn = sqlite3.connect("food.db")
 cursor = conn.cursor()
 
 cursor.execute(
-    """
+"""
 CREATE TABLE IF NOT EXISTS food(
 id INTEGER PRIMARY KEY AUTOINCREMENT,
 user_id INTEGER,
@@ -70,19 +68,29 @@ carbs REAL
 conn.commit()
 
 
-# =========================
+# =====================
 # JSON PARSER
-# =========================
+# =====================
+
+def fatal_error(e):
+
+    print("FATAL ERROR:", e)
+
+    import os
+    os._exit(1)
 
 
 def parse_json(text):
+
+    if not text:
+        return None
 
     try:
 
         start = text.find("{")
         end = text.rfind("}") + 1
 
-        if start == -1:
+        if start == -1 or end == -1:
             return None
 
         return json.loads(text[start:end])
@@ -91,15 +99,14 @@ def parse_json(text):
         return None
 
 
-# =========================
+# =====================
 # GEMINI TEXT
-# =========================
-
+# =====================
 
 def gemini_parse(text):
 
     prompt = """
-Return JSON only.
+Return JSON:
 
 {
 "food":"name",
@@ -111,37 +118,41 @@ Return JSON only.
 }
 """
 
-    try:
+    models = [
+        "gemini-3.1-flash-lite-preview",
+        "gemini-2.5-flash"
+    ]
 
-        response = client.models.generate_content(
-            model=TEXT_MODEL, contents=[prompt, text]
-        )
+    for model in models:
 
-        if not response or not response.text:
-            return None
+        try:
 
-        return response.text
+            response = client.models.generate_content(
+                model=model,
+                contents=[prompt, text]
+            )
 
-    except Exception as e:
+            print("MODEL USED:", model)
 
-        print("TEXT GEMINI ERROR:", e)
+            return response.text
 
-        return None
+        except Exception as e:
+
+            print("MODEL FAILED:", model, e)
+
+    fatal_error("All Gemini models failed")
 
 
-# =========================
+# =====================
 # GEMINI IMAGE
-# =========================
-
+# =====================
 
 def gemini_parse_image(img):
 
     prompt = """
-Identify food in the image.
+Identify food in image.
 
-Estimate portion in grams.
-
-Return JSON only:
+Return JSON:
 
 {
 "food":"name",
@@ -155,47 +166,40 @@ Return JSON only:
 
     try:
 
-        import io
-        from google.genai import types
-
         buffer = io.BytesIO()
         img.save(buffer, format="JPEG")
-        image_bytes = buffer.getvalue()
 
         response = client.models.generate_content(
             model=IMAGE_MODEL,
             contents=[
                 prompt,
-                types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg"),
-            ],
+                types.Part.from_bytes(
+                    data=buffer.getvalue(),
+                    mime_type="image/jpeg"
+                )
+            ]
         )
-
-        if not response or not response.text:
-            return None
 
         return response.text
 
     except Exception as e:
 
-        print("IMAGE GEMINI ERROR:", e)
-
-        return None
+        fatal_error(e)
 
 
-# =========================
+# =====================
 # SAVE FOOD
-# =========================
+# =====================
 
-
-def save_food(user_id, food, grams, kcal, protein, fat, carbs):
+def save_food(user, food, grams, kcal, protein, fat, carbs):
 
     cursor.execute(
-        """
+"""
 INSERT INTO food(user_id,date,food,grams,kcal,protein,fat,carbs)
 VALUES(?,?,?,?,?,?,?,?)
 """,
         (
-            user_id,
+            user,
             datetime.date.today().isoformat(),
             food,
             grams,
@@ -209,10 +213,9 @@ VALUES(?,?,?,?,?,?,?,?)
     conn.commit()
 
 
-# =========================
+# =====================
 # DAILY TOTAL
-# =========================
-
+# =====================
 
 def daily_total(date):
 
@@ -226,55 +229,81 @@ def daily_total(date):
     return df.sum()
 
 
-# =========================
-# EXCEL EXPORT
-# =========================
+# =====================
+# WEEK STATS
+# =====================
 
+def week_stats():
 
-def export_excel(date):
+    week = (datetime.date.today() - datetime.timedelta(days=7)).isoformat()
 
     df = pd.read_sql_query(
-        "SELECT food,grams,kcal,protein,fat,carbs FROM food WHERE date=?",
-        conn,
-        params=(date,),
+        "SELECT kcal,protein,fat,carbs FROM food WHERE date>=?", conn, params=(week,)
     )
 
-    filename = f"food_{date}.xlsx"
+    if df.empty:
+        return None
 
-    df.to_excel(filename, index=False)
-
-    return filename
+    return df.mean()
 
 
-# =========================
+# =====================
+# EXCEL
+# =====================
+
+def export_excel():
+
+    df = pd.read_sql_query("SELECT * FROM food", conn)
+
+    month = datetime.datetime.now().strftime("%B %Y")
+
+    file = "food_report.xlsx"
+
+    with pd.ExcelWriter(
+        file,
+        engine="openpyxl",
+        mode="a",
+        if_sheet_exists="replace"
+    ) as writer:
+
+        df.to_excel(writer, sheet_name=month, index=False)
+
+    return file
+
+
+# =====================
 # COMMANDS
-# =========================
-
+# =====================
 
 @dp.message(Command("start"))
 async def start(message: Message):
 
     await message.answer(
-        """
+"""
 Отправьте:
 
 текст еды
 фото еды
-фото упаковки
 
 Команды:
 
 /undo
-/today
+/stats
+/week
+/excel
 """
     )
 
+
+# =====================
+# DELETE LAST
+# =====================
 
 @dp.message(Command("undo"))
 async def undo(message: Message):
 
     cursor.execute(
-        """
+"""
 DELETE FROM food
 WHERE id=(
 SELECT id FROM food
@@ -290,8 +319,12 @@ LIMIT 1)
     await message.answer("Последняя запись удалена")
 
 
-@dp.message(Command("today"))
-async def today(message: Message):
+# =====================
+# TODAY STATS
+# =====================
+
+@dp.message(Command("stats"))
+async def stats(message: Message):
 
     today = datetime.date.today().isoformat()
 
@@ -303,134 +336,146 @@ async def today(message: Message):
 
         return
 
-    remaining = DAILY_LIMIT - total.kcal
-
     await message.answer(
-        f"""
+f"""
 Сегодня:
 
-Калории: {total.kcal:.0f}
-Белки: {total.protein:.1f}
-Жиры: {total.fat:.1f}
-Углеводы: {total.carbs:.1f}
+Калории {total.kcal:.0f}
+Белки {total.protein:.1f}
+Жиры {total.fat:.1f}
+Углеводы {total.carbs:.1f}
 
-Осталось калорий: {remaining:.0f}
+Осталось {DAILY_LIMIT-total.kcal:.0f} kcal
 """
     )
 
 
-# =========================
-# PHOTO HANDLER
-# =========================
+# =====================
+# WEEK
+# =====================
 
+@dp.message(Command("week"))
+async def week(message: Message):
+
+    avg = week_stats()
+
+    if avg is None:
+
+        await message.answer("Нет данных")
+
+        return
+
+    await message.answer(
+f"""
+Среднее за неделю
+
+Калории {avg.kcal:.0f}
+Белки {avg.protein:.1f}
+Жиры {avg.fat:.1f}
+Углеводы {avg.carbs:.1f}
+"""
+    )
+
+
+# =====================
+# EXCEL
+# =====================
+
+@dp.message(Command("excel"))
+async def excel(message: Message):
+
+    file = export_excel()
+
+    await bot.send_document(message.from_user.id, open(file, "rb"))
+
+
+# =====================
+# PHOTO
+# =====================
 
 @dp.message(F.photo)
-async def photo_handler(message: Message):
+async def photo(message: Message):
 
     photo = message.photo[-1]
 
-    filename = "food.jpg"
+    file = "food.jpg"
 
-    await bot.download(photo, filename)
+    await bot.download(photo, file)
 
-    img = Image.open(filename)
+    img = Image.open(file)
 
     img = img.resize((1024, 1024))
 
     result = gemini_parse_image(img)
 
-    if not result:
-
-        await message.answer("AI не смог распознать фото")
-
-        return
-
     data = parse_json(result)
 
     if not data:
 
-        await message.answer("AI не смог распознать еду")
+        await message.answer("Не смог распознать")
 
         return
 
-    food = data.get("food", "unknown")
-
-    grams = float(data.get("grams") or 100)
-    kcal = float(data.get("kcal") or 0)
-    protein = float(data.get("protein") or 0)
-    fat = float(data.get("fat") or 0)
-    carbs = float(data.get("carbs") or 0)
-
-    save_food(message.from_user.id, food, grams, kcal, protein, fat, carbs)
+    save_food(
+        message.from_user.id,
+        data["food"],
+        data["grams"],
+        data["kcal"],
+        data["protein"],
+        data["fat"],
+        data["carbs"],
+    )
 
     await message.answer(
-        f"""
-Продукт: {food}
+f"""
+{data['food']}
 
-Вес: {grams} г
-
-Калории: {kcal}
-Белки: {protein}
-Жиры: {fat}
-Углеводы: {carbs}
+{data['kcal']} kcal
 """
     )
 
 
-# =========================
-# TEXT HANDLER
-# =========================
-
+# =====================
+# TEXT
+# =====================
 
 @dp.message(F.text)
-async def text_handler(message: Message):
+async def text(message: Message):
 
     result = gemini_parse(message.text)
 
-    if not result:
-
-        await message.answer("AI не смог распознать текст")
-
-        return
-
     data = parse_json(result)
 
     if not data:
 
-        await message.answer("AI не смог распознать еду")
+        await message.answer("Ошибка распознавания")
 
         return
 
-    food = data.get("food", "unknown")
-
-    grams = float(data.get("grams") or 100)
-    kcal = float(data.get("kcal") or 0)
-    protein = float(data.get("protein") or 0)
-    fat = float(data.get("fat") or 0)
-    carbs = float(data.get("carbs") or 0)
-
-    save_food(message.from_user.id, food, grams, kcal, protein, fat, carbs)
+    save_food(
+        message.from_user.id,
+        data["food"],
+        data["grams"],
+        data["kcal"],
+        data["protein"],
+        data["fat"],
+        data["carbs"],
+    )
 
     await message.answer(
-        f"""
-Продукт: {food}
+f"""
+{data['food']}
 
-Вес: {grams} г
-
-Калории: {kcal}
-Белки: {protein}
-Жиры: {fat}
-Углеводы: {carbs}
+{data['kcal']} kcal
 """
     )
 
 
-# =========================
-# DAILY REPORT
-# =========================
+# =====================
+# REPORT
+# =====================
 
-
-async def send_report():
+async def report():
 
     yesterday = (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
 
@@ -439,30 +484,38 @@ async def send_report():
     if total is None:
         return
 
-    file = export_excel(yesterday)
+    await bot.send_message(
+        ADMIN_ID,
+f"""
+Итого за {yesterday}
 
-    await bot.send_document(
-        chat_id=YOUR_TELEGRAM_ID,
-        document=open(file, "rb"),
-        caption=f"Отчет за {yesterday}",
+Калории {total.kcal:.0f}
+Белки {total.protein:.1f}
+Жиры {total.fat:.1f}
+Углеводы {total.carbs:.1f}
+"""
     )
 
 
 def scheduler():
 
-    schedule.every().day.at("08:00").do(lambda: asyncio.run(send_report()))
+    try:
 
-    while True:
+        schedule.every().day.at("08:00").do(lambda: asyncio.run(report()))
 
-        schedule.run_pending()
+        while True:
 
-        time.sleep(30)
+            schedule.run_pending()
+            time.sleep(30)
+
+    except KeyboardInterrupt:
+
+        print("Scheduler stopped")
 
 
-# =========================
+# =====================
 # MAIN
-# =========================
-
+# =====================
 
 async def main():
 
