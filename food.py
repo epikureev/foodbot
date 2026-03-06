@@ -44,7 +44,10 @@ dp = Dispatcher()
 # GEMINI
 # =====================
 
-client = genai.Client(api_key=GEMINI_API)
+client = genai.Client(
+    api_key=GEMINI_API,
+    http_options={"base_url": "https://bold-fire-af65.dkhabiev.workers.dev"},
+)
 
 
 # =====================
