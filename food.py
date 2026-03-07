@@ -52,7 +52,7 @@ client = genai.Client(
     api_key="dummy",
     http_options={
         "base_url": "https://bold-fire-af65.dkhabiev.workers.dev",
-        "headers": {"x-bot-secret": "foodbot12345"},
+        "headers": {"x-bot-secret": "foodbot926346"},
     },
 )
 
