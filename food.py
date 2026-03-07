@@ -184,25 +184,40 @@ Return ONLY JSON.
 def gemini_parse_image(img):
 
     prompt = """
-You are a nutrition expert.
+You are a professional nutrition expert and food analyst.
 
-1. Identify the food.
-2. Estimate portion size in grams.
+Your task is to analyze a food photo and estimate nutrition values.
 
-Use common portion sizes.
+IMPORTANT RULES:
 
-Examples:
+1. The "food" field MUST always be written in Russian.
+2. Use simple food names (examples: "яблоко", "омлет", "рис", "курица", "банан").
+3. Do NOT include brand names or descriptions.
+4. Estimate portion size realistically using common serving sizes.
+5. Always return valid JSON.
+6. Never include text outside JSON.
 
-plate of rice → 200-250 g
-steak → 180-250 g
-banana → 120 g
-apple → 180 g
-egg → 60 g
+Portion estimation guidelines:
 
-Return ONLY JSON:
+apple → 160–200 g  
+banana → 110–130 g  
+egg → 55–65 g  
+steak → 180–250 g  
+plate of rice → 200–250 g  
+chicken breast → 150–220 g  
+salad bowl → 150–300 g
+
+Nutrition estimation rules:
+
+kcal = realistic calories for the portion  
+protein = grams of protein  
+fat = grams of fat  
+carbs = grams of carbohydrates  
+
+Return ONLY JSON in this format:
 
 {
-"food":"name",
+"food":"название блюда на русском",
 "grams":number,
 "kcal":number,
 "protein":number,

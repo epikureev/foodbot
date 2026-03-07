@@ -1,0 +1,17 @@
+обновление кода
+
+на компе
+cd C:\Users\dkhab\Documents\FOOD
+
+git add .
+git commit -m "update bot"
+git push
+
+на сервере
+
+ssh root@31.58.87.115
+Antalya19842512
+
+cd /root/foodbot
+git pull
+systemctl restart foodbot
