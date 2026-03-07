@@ -538,13 +538,24 @@ async def photo(message: Message):
 @dp.message(F.text)
 async def text(message: Message):
 
-    result = gemini_parse(message.text)
+    wait_msg = await message.answer("⏳ Анализирую еду...")
+
+    try:
+
+        result = await asyncio.wait_for(
+            asyncio.to_thread(gemini_parse, message.text), timeout=30
+        )
+
+    except asyncio.TimeoutError:
+
+        await wait_msg.edit_text("⚠️ Сервер долго отвечает. Попробуйте ещё раз.")
+        return
 
     data = parse_json(result)
 
     if not data:
 
-        await message.answer("Ошибка распознавания")
+        await wait_msg.edit_text("Ошибка распознавания")
         return
 
     save_food(
@@ -568,7 +579,7 @@ async def text(message: Message):
 
     left = DAILY_LIMIT - eaten
 
-    await message.answer(
+    await wait_msg.edit_text(
         f"""
 🍽 {data['food']}
 
