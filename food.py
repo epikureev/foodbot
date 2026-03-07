@@ -1,3 +1,8 @@
+import os
+
+TELEGRAM_TOKEN = os.getenv("8612915134:AAHN8V2l0YhQrScRo_bZ6rHOCabqS8LyjoQ")
+GEMINI_API_KEY = os.getenv("AIzaSyAZxtHuopsKhGtB0lciO_O6Za0ugLDv0aw")
+
 import asyncio
 import datetime
 import json
@@ -22,8 +27,7 @@ from google.genai import types
 # CONFIG
 # =====================
 
-TELEGRAM_TOKEN = "8612915134:AAHN8V2l0YhQrScRo_bZ6rHOCabqS8LyjoQ"
-GEMINI_API = "AIzaSyB8geT4qYdS7oTm5ZfF1wEVOT32pBFsS-Q"
+
 ADMIN_ID = 215444830
 
 TEXT_MODEL = "gemini-2.0-flash"
@@ -45,7 +49,7 @@ dp = Dispatcher()
 # =====================
 
 client = genai.Client(
-    api_key=GEMINI_API,
+    api_key="dummy",
     http_options={"base_url": "https://bold-fire-af65.dkhabiev.workers.dev"},
 )
 
