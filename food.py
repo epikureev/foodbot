@@ -679,15 +679,21 @@ async def send_daily_excel():
 # =====================
 
 
+async def send_daily_excel():
+    print("TEST EXCEL JOB")
+
+
 async def main():
 
     print("BOT STARTED")
 
     scheduler = AsyncIOScheduler(timezone="Europe/Istanbul")
 
-    scheduler.add_job(send_daily_excel, trigger="cron", hour=8, minute=0)
+    scheduler.add_job(send_daily_excel, trigger="interval", minutes=1)
 
     scheduler.start()
+
+    print("SCHEDULER STARTED")
 
     await dp.start_polling(bot)
 
