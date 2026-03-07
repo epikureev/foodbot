@@ -20,6 +20,8 @@ from aiogram.types import Message
 from google import genai
 from google.genai import types
 
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
 
 # =====================
 # CONFIG
@@ -643,6 +645,35 @@ def scheduler():
         print("Scheduler stopped")
 
 
+async def send_daily_excel():
+
+    print("GENERATING DAILY EXCEL")
+
+    yesterday = (datetime.datetime.now() - datetime.timedelta(days=1)).date()
+
+    conn = sqlite3.connect("food.db")
+
+    df = pd.read_sql_query(
+        "SELECT * FROM meals WHERE date = ?", conn, params=(str(yesterday),)
+    )
+
+    conn.close()
+
+    if df.empty:
+        print("NO DATA FOR YESTERDAY")
+        return
+
+    buffer = io.BytesIO()
+
+    df.to_excel(buffer, index=False)
+
+    buffer.seek(0)
+
+    await bot.send_document(chat_id=215444830, document=("food_report.xlsx", buffer))
+
+    print("EXCEL SENT")
+
+
 # =====================
 # MAIN
 # =====================
@@ -652,7 +683,11 @@ async def main():
 
     print("BOT STARTED")
 
-    asyncio.create_task(asyncio.to_thread(scheduler))
+    scheduler = AsyncIOScheduler(timezone="Europe/Istanbul")
+
+    scheduler.add_job(send_daily_excel, trigger="cron", hour=8, minute=0)
+
+    scheduler.start()
 
     await dp.start_polling(bot)
 
