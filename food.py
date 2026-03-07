@@ -1,7 +1,6 @@
 import os
 
 TELEGRAM_TOKEN = os.getenv("8612915134:AAHN8V2l0YhQrScRo_bZ6rHOCabqS8LyjoQ")
-GEMINI_API_KEY = os.getenv("AIzaSyAZxtHuopsKhGtB0lciO_O6Za0ugLDv0aw")
 
 import asyncio
 import datetime
@@ -9,7 +8,6 @@ import json
 import sqlite3
 import time
 import io
-import os
 
 import pandas as pd
 import schedule
