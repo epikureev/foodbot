@@ -1,0 +1,6 @@
+.env
+*.env
+tokens
+secrets
+*.db
+__pycache__/
