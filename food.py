@@ -1,6 +1,6 @@
 import os
 
-TELEGRAM_TOKEN = os.getenv("8612915134:AAHN8V2l0YhQrScRo_bZ6rHOCabqS8LyjoQ")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 
 import asyncio
 import datetime
