@@ -15,7 +15,7 @@ from PIL import Image
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
-from aiogram.types import Message, BufferedInputFile
+from aiogram.types import Message, FSInputFile
 
 from google import genai
 from google.genai import types
@@ -562,21 +562,13 @@ async def week(message: Message):
 @dp.message(Command("excel"))
 async def excel(message: Message):
 
-    df = pd.read_sql_query("SELECT * FROM food", conn)
+    file = export_excel()
 
-    if df.empty:
-        await message.answer("В базе пока нет данных")
-        return
+    print("EXCEL FILE:", file)
 
-    buffer = io.BytesIO()
+    file = FSInputFile(file)
 
-    df.to_excel(buffer, index=False)
-
-    buffer.seek(0)
-
-    await message.answer_document(
-        BufferedInputFile(buffer.getvalue(), filename="food_report.xlsx")
-    )
+    await bot.send_document(message.from_user.id, file)
 
 
 # =====================
