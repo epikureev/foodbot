@@ -460,13 +460,9 @@ async def week(message: Message):
 @dp.message(Command("excel"))
 async def excel(message: Message):
 
-    file = export_excel()
+    print("EXCEL COMMAND RECEIVED")
 
-    if not file:
-        await message.answer("В базе пока нет данных")
-        return
-
-    await bot.send_document(message.from_user.id, open(file, "rb"))
+    await message.answer("Команда excel получена")
 
 
 # =====================
