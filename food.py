@@ -372,6 +372,32 @@ async def start(message: Message):
     )
 
 
+@dp.message(Command("excel"))
+async def cmd_excel(message: Message):
+
+    yesterday = (datetime.datetime.now() - datetime.timedelta(days=1)).date()
+
+    conn = sqlite3.connect("food.db")
+
+    df = pd.read_sql_query(
+        "SELECT * FROM meals WHERE date = ?", conn, params=(str(yesterday),)
+    )
+
+    conn.close()
+
+    if df.empty:
+        await message.answer("За вчера данных нет")
+        return
+
+    buffer = io.BytesIO()
+
+    df.to_excel(buffer, index=False)
+
+    buffer.seek(0)
+
+    await message.answer_document(("food_report.xlsx", buffer))
+
+
 # =====================
 # DELETE LAST
 # =====================
