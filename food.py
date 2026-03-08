@@ -334,6 +334,9 @@ def export_excel():
 
     file = "food_report.xlsx"
 
+    if os.path.exists(file):
+        os.remove(file)
+
     df_all = pd.read_sql_query(
         "SELECT date,food,grams,kcal,protein,fat,carbs FROM food",
         conn,
