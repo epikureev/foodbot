@@ -15,7 +15,7 @@ from PIL import Image
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
-from aiogram.types import Message
+from aiogram.types import Message, FSInputFile, BufferedInputFile
 
 from google import genai
 from google.genai import types
@@ -626,22 +626,6 @@ async def report():
 # =====================
 
 
-def scheduler():
-
-    schedule.every().day.at("08:00").do(lambda: asyncio.run(report()))
-
-    try:
-
-        while True:
-
-            schedule.run_pending()
-            time.sleep(30)
-
-    except KeyboardInterrupt:
-
-        print("Scheduler stopped")
-
-
 async def send_daily_excel():
 
     print("GENERATING DAILY EXCEL")
@@ -668,7 +652,10 @@ async def send_daily_excel():
 
     buffer.seek(0)
 
-    await bot.send_document(chat_id=ADMIN_ID, document=("food_report.xlsx", buffer))
+    await bot.send_document(
+        chat_id=ADMIN_ID,
+        document=BufferedInputFile(buffer.getvalue(), filename="food_report.xlsx"),
+    )
 
     print("EXCEL SENT")
 
