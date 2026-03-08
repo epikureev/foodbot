@@ -382,7 +382,7 @@ async def cmd_excel(message: Message):
     conn = sqlite3.connect("food.db")
 
     df = pd.read_sql_query(
-        "SELECT * FROM meals WHERE date LIKE ?", conn, params=(f"{yesterday}%",)
+        "SELECT * FROM food WHERE date LIKE ?", conn, params=(f"{yesterday}%",)
     )
 
     conn.close()
@@ -677,12 +677,14 @@ async def send_daily_excel():
 
     print("GENERATING DAILY EXCEL")
 
-    yesterday = (datetime.datetime.now() - datetime.timedelta(days=1)).date()
+    yesterday = (datetime.datetime.now() - datetime.timedelta(days=1)).strftime(
+        "%Y-%m-%d"
+    )
 
     conn = sqlite3.connect("food.db")
 
     df = pd.read_sql_query(
-        "SELECT * FROM meals WHERE date = ?", conn, params=(str(yesterday),)
+        "SELECT * FROM food WHERE date LIKE ?", conn, params=(f"{yesterday}%",)
     )
 
     conn.close()
@@ -697,7 +699,7 @@ async def send_daily_excel():
 
     buffer.seek(0)
 
-    await bot.send_document(chat_id=215444830, document=("food_report.xlsx", buffer))
+    await bot.send_document(chat_id=ADMIN_ID, document=("food_report.xlsx", buffer))
 
     print("EXCEL SENT")
 
@@ -705,10 +707,6 @@ async def send_daily_excel():
 # =====================
 # MAIN
 # =====================
-
-
-async def send_daily_excel():
-    print("TEST EXCEL JOB")
 
 
 async def main():
