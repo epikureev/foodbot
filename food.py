@@ -375,12 +375,14 @@ async def start(message: Message):
 @dp.message(Command("excel"))
 async def cmd_excel(message: Message):
 
-    yesterday = (datetime.datetime.now() - datetime.timedelta(days=1)).date()
+    yesterday = (datetime.datetime.now() - datetime.timedelta(days=1)).strftime(
+        "%Y-%m-%d"
+    )
 
     conn = sqlite3.connect("food.db")
 
     df = pd.read_sql_query(
-        "SELECT * FROM meals WHERE date = ?", conn, params=(str(yesterday),)
+        "SELECT * FROM meals WHERE date LIKE ?", conn, params=(f"{yesterday}%",)
     )
 
     conn.close()
