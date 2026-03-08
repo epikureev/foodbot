@@ -332,14 +332,118 @@ def week_stats():
 
 def export_excel():
 
-    df = pd.read_sql_query("SELECT * FROM food", conn)
+    today = datetime.date.today().isoformat()
+
+    df = pd.read_sql_query(
+        "SELECT food,grams,kcal,protein,fat,carbs FROM food WHERE date=?",
+        conn,
+        params=(today,),
+    )
 
     if df.empty:
         return None
 
     file = "food_report.xlsx"
 
-    df.to_excel(file, index=False)
+    if os.path.exists(file):
+        writer = pd.ExcelWriter(
+            file,
+            engine="openpyxl",
+            mode="a",
+            if_sheet_exists="replace",
+        )
+    else:
+        writer = pd.ExcelWriter(file, engine="openpyxl")
+
+    # --- дневной лист ---
+
+    df.to_excel(writer, sheet_name=today, index=False)
+
+    ws = writer.book[today]
+
+    last_row = len(df) + 2
+
+    ws[f"A{last_row}"] = "ИТОГО"
+
+    kcal = df["kcal"].sum()
+    protein = df["protein"].sum()
+    fat = df["fat"].sum()
+    carbs = df["carbs"].sum()
+
+    ws[f"C{last_row}"] = kcal
+    ws[f"D{last_row}"] = protein
+    ws[f"E{last_row}"] = fat
+    ws[f"F{last_row}"] = carbs
+
+    # --- удалить листы старше 60 дней ---
+
+    limit = datetime.date.today() - datetime.timedelta(days=60)
+
+    for sheet in list(writer.book.sheetnames):
+
+        try:
+            d = datetime.datetime.strptime(sheet, "%Y-%m-%d").date()
+
+            if d < limit:
+                del writer.book[sheet]
+
+        except:
+            pass
+
+    # --- SUMMARY таблица ---
+
+    summary_data = []
+
+    for sheet in writer.book.sheetnames:
+
+        try:
+
+            d = datetime.datetime.strptime(sheet, "%Y-%m-%d").date()
+
+            ws = writer.book[sheet]
+
+            row = ws.max_row
+
+            summary_data.append(
+                {
+                    "date": sheet,
+                    "kcal": ws[f"C{row}"].value,
+                    "protein": ws[f"D{row}"].value,
+                    "fat": ws[f"E{row}"].value,
+                    "carbs": ws[f"F{row}"].value,
+                }
+            )
+
+        except:
+            pass
+
+    summary_df = pd.DataFrame(summary_data).sort_values("date")
+
+    summary_df.to_excel(writer, sheet_name="SUMMARY", index=False)
+
+    # --- график калорий ---
+
+    from openpyxl.chart import LineChart, Reference
+
+    ws = writer.book["SUMMARY"]
+
+    chart = LineChart()
+
+    chart.title = "Calories trend (60 days)"
+    chart.y_axis.title = "Calories"
+    chart.x_axis.title = "Date"
+
+    data = Reference(ws, min_col=2, min_row=1, max_row=len(summary_df) + 1)
+
+    chart.add_data(data, titles_from_data=True)
+
+    cats = Reference(ws, min_col=1, min_row=2, max_row=len(summary_df) + 1)
+
+    chart.set_categories(cats)
+
+    ws.add_chart(chart, "H2")
+
+    writer.close()
 
     return file
 
