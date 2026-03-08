@@ -334,15 +334,12 @@ def export_excel():
 
     df = pd.read_sql_query("SELECT * FROM food", conn)
 
-    month = datetime.datetime.now().strftime("%B %Y")
+    if df.empty:
+        return None
 
     file = "food_report.xlsx"
 
-    with pd.ExcelWriter(
-        file, engine="openpyxl", mode="a", if_sheet_exists="replace"
-    ) as writer:
-
-        df.to_excel(writer, sheet_name=month, index=False)
+    df.to_excel(file, index=False)
 
     return file
 
@@ -370,34 +367,6 @@ async def start(message: Message):
 /excel
 """
     )
-
-
-@dp.message(Command("excel"))
-async def cmd_excel(message: Message):
-
-    yesterday = (datetime.datetime.now() - datetime.timedelta(days=1)).strftime(
-        "%Y-%m-%d"
-    )
-
-    conn = sqlite3.connect("food.db")
-
-    df = pd.read_sql_query(
-        "SELECT * FROM food WHERE date LIKE ?", conn, params=(f"{yesterday}%",)
-    )
-
-    conn.close()
-
-    if df.empty:
-        await message.answer("За вчера данных нет")
-        return
-
-    buffer = io.BytesIO()
-
-    df.to_excel(buffer, index=False)
-
-    buffer.seek(0)
-
-    await message.answer_document(("food_report.xlsx", buffer))
 
 
 # =====================
@@ -492,6 +461,10 @@ async def week(message: Message):
 async def excel(message: Message):
 
     file = export_excel()
+
+    if not file:
+        await message.answer("В базе пока нет данных")
+        return
 
     await bot.send_document(message.from_user.id, open(file, "rb"))
 
