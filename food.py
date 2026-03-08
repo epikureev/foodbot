@@ -15,7 +15,7 @@ from PIL import Image
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
-from aiogram.types import Message, FSInputFile
+from aiogram.types import Message, FSInputFile, BufferedInputFile
 
 from google import genai
 from google.genai import types
@@ -347,15 +347,30 @@ def export_excel():
 
     df_all["date"] = pd.to_datetime(df_all["date"])
 
-    if os.path.exists(file):
-        writer = pd.ExcelWriter(
-            file,
-            engine="openpyxl",
-            mode="a",
-            if_sheet_exists="replace",
-        )
-    else:
-        writer = pd.ExcelWriter(file, engine="openpyxl")
+    writer = pd.ExcelWriter(file, engine="openpyxl")
+
+    for date, df in df_all.groupby(df_all["date"].dt.date):
+
+        sheet = str(date)
+
+        df = df[["food", "grams", "kcal", "protein", "fat", "carbs"]]
+
+        df.to_excel(writer, sheet_name=sheet, index=False)
+
+        ws = writer.book[sheet]
+
+        row = len(df) + 2
+
+        ws[f"A{row}"] = "ИТОГО"
+
+        ws[f"C{row}"] = df["kcal"].sum()
+        ws[f"D{row}"] = df["protein"].sum()
+        ws[f"E{row}"] = df["fat"].sum()
+        ws[f"F{row}"] = df["carbs"].sum()
+
+    writer.close()
+
+    return file
 
     # --- листы по дням ---
 
@@ -564,11 +579,13 @@ async def excel(message: Message):
 
     file = export_excel()
 
-    print("EXCEL FILE:", file)
+    if not file:
+        await message.answer("Нет данных")
+        return
 
-    file = FSInputFile(file)
+    document = FSInputFile(file)
 
-    await bot.send_document(message.from_user.id, file)
+    await bot.send_document(message.from_user.id, document)
 
 
 # =====================
