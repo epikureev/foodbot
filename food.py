@@ -349,29 +349,6 @@ def export_excel():
 
     writer = pd.ExcelWriter(file, engine="openpyxl")
 
-    for date, df in df_all.groupby(df_all["date"].dt.date):
-
-        sheet = str(date)
-
-        df = df[["food", "grams", "kcal", "protein", "fat", "carbs"]]
-
-        df.to_excel(writer, sheet_name=sheet, index=False)
-
-        ws = writer.book[sheet]
-
-        row = len(df) + 2
-
-        ws[f"A{row}"] = "ИТОГО"
-
-        ws[f"C{row}"] = df["kcal"].sum()
-        ws[f"D{row}"] = df["protein"].sum()
-        ws[f"E{row}"] = df["fat"].sum()
-        ws[f"F{row}"] = df["carbs"].sum()
-
-    writer.close()
-
-    return file
-
     # --- листы по дням ---
 
     for date, df in df_all.groupby(df_all["date"].dt.date):
