@@ -683,7 +683,7 @@ async def main():
 
     scheduler = AsyncIOScheduler(timezone="Europe/Istanbul")
 
-    scheduler.add_job(send_daily_excel, trigger="interval", minutes=2)
+    scheduler.add_job(send_daily_excel, trigger="cron", hour=8, minute=0)
 
     scheduler.start()
 
